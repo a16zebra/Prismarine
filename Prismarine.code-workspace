@@ -1,0 +1,30 @@
+{
+  "folders": [
+    { "path": "apps/desktop" },
+    { "path": "packages/core" },
+    { "path": "packages/ui" },
+    { "path": "packages/editor" },
+    { "path": "packages/fs-rust" },
+    { "path": "packages/plugin-runtime" },
+    { "path": "examples" },
+    { "path": "devlog" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/target": true,
+      "**/dist": true
+    },
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "rust-analyzer.cargo.runBuildScripts": true,
+    "rust-analyzer.checkOnSave.command": "clippy",
+    "yaml.schemas": {
+      "https://json.schemastore.org/github-workflow.json": "/*.github/workflows/*"
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.osx": "zsh"
+  }
+}
