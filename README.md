@@ -23,6 +23,22 @@
 
 ---
 
+## development
+
+```bash
+npm install        # install dependencies
+npm run dev        # launch app in dev mode (hot reload)
+npm run build      # production build → out/
+npm test           # unit tests (vitest)
+npm run test:e2e   # build + e2e smoke test (playwright)
+npm run lint       # eslint
+npm run format     # prettier
+```
+
+Requires Node.js 22+ and npm 10+.
+
+---
+
 ## what is this? ✨
 
 Prismarine is a **keyboard-driven desktop workspace** that combines:
