@@ -54,17 +54,20 @@ It is the space where those tools stop being separate things.
 | Layer | Technology | Rationale |
 |---|---|---|
 | Desktop shell | **Electron** | Ships Chromium; enables real browser tab embedding; cross-platform |
-| Main process | **Node.js** (Electron) | File system, window management, IPC bridge to Python |
+| Main process | **Node.js** (Electron) | File system, window management, IPC bridge to Python and Neovim |
 | Renderer | **React 18 + TypeScript** | Component model maps cleanly to Prism architecture |
 | Styling | **Tailwind CSS** | Utility-first; theming via `.theme.p8e` CSS variable overrides |
-| Browser pane | **Electron `BrowserView`** | Embeds real Chromium tabs inside the app window |
+| Browser pane | **Electron `WebContentsView`** | Embeds real Chromium tabs inside the app window |
+| Text editor | **Neovim** (`--embed` headless) | Full Neovim via msgpack-RPC; user's plugins and config work natively |
+| Neovim IPC | **`neovim` npm package** | msgpack-RPC client; drives Neovim grid events from Node.js |
+| Neovim renderer | **DOM grid renderer** (V1) → **Canvas** (V2) | Draws Neovim's character grid into the pane |
+| Editor fallback | **CodeMirror 6 + `@codemirror/vim`** | Used when Neovim is not installed; one-time notice shown |
 | Python runtime | **CPython sidecar** (subprocess) | Config, scripting, browser automation, plugin logic |
-| IPC bridge | **JSON-RPC over stdio** | Python ↔ Electron main process; bidirectional, async |
-| Text editor | **CodeMirror 6** | Fast, extensible, keyboard-friendly, language-aware |
+| Python IPC | **JSON-RPC over stdio** | Python ↔ Electron main process; bidirectional, async |
 | UI editor | **Custom Craft Editor** (React) | Visual drag-and-drop Prism layout builder |
 | Build | **Vite + electron-vite** | Fast dev loop; handles renderer + main + preload |
 | Testing | **Vitest + Playwright** | Unit, integration, end-to-end |
-| Config format | **YAML** (`.index.p8e`) + **Python** (`init.py`) | Human-readable, versionable |
+| Config format | **YAML** (`.index.p8e`) + **Python** (`init.py`) + **Lua** (`nvim/init.lua`) | Human-readable, versionable |
 
 ---
 
@@ -133,13 +136,13 @@ Everything in Prismarine is a **buffer**. A buffer has a type, a path (or URL), 
 
 | Buffer Type | Major Mode | Description |
 |---|---|---|
-| `file-editor` | `editor-mode` | Text/code file via CodeMirror |
+| `file-editor` | `editor-mode` | Text/code file rendered via Neovim embed (or CodeMirror fallback) |
 | `file-explorer` | `explorer-mode` | Directory listing |
 | `prism-view` | `prism-mode` | Renders a directory's `.index.p8e` interface |
-| `browser` | `browser-mode` | Full Chromium tab via BrowserView |
+| `browser` | `browser-mode` | Full Chromium tab via WebContentsView |
 | `terminal` | `terminal-mode` | Embedded terminal (xterm.js) |
 | `craft-editor` | `craft-mode` | Visual Prism layout editor |
-| `scratch` | `editor-mode` | Unsaved scratch buffer |
+| `scratch` | `editor-mode` | Unsaved scratch buffer (Neovim unnamed buffer) |
 
 ### 5.2 Pane System
 
@@ -149,7 +152,8 @@ The window is divided into **panes**. Each pane holds one buffer.
 - Panes can be resized by dragging dividers (mouse) or keyboard commands
 - A pane can be focused; the focused pane receives keyboard input
 - Each pane maintains its own buffer history (back/forward)
-- BrowserView panes are positioned and sized by the main process to overlay the renderer
+- WebContentsView panes (browser) and Neovim grid panes are positioned by the main process;
+  both receive pixel coordinate updates from the renderer on every resize event
 
 ### 5.3 Buffer Navigation
 
@@ -189,7 +193,7 @@ Major modes are registered from Python or built-in TypeScript.
 
 ```
 explorer-mode   → j/k to navigate, Enter to open, d to delete, r to rename ...
-editor-mode     → CodeMirror keybindings + Prismarine commands
+editor-mode     → all keys owned by Neovim; Prismarine only intercepts pane-level commands
 browser-mode    → H/L for history, gt/gT for tabs, / for find-in-page ...
 prism-mode      → read-only navigation of Prism elements
 craft-mode      → mouse-driven Prism editor with keyboard shortcuts
@@ -199,6 +203,17 @@ terminal-mode   → passthrough (all keys go to terminal)
 ### 6.3 Leader Key & Keybinding Hierarchy
 
 The **Space bar** is the leader key in Normal state. Keybindings follow a prefix namespace:
+
+> ⚠️ **SPC conflict in `editor-mode`:** Neovim's `init.lua` sets `vim.g.mapleader = " "` —
+> Space is also Neovim's leader inside editor buffers. The rule is simple:
+>
+> - `editor-mode` buffer focused, Neovim in Normal state → **Space goes to Neovim**
+> - Any other buffer type focused → **Space goes to Prismarine**
+>
+> This is a clean boundary. The user never has to think about it — they are either
+> in their editor (Neovim owns everything) or they are in the workspace (Prismarine owns everything).
+> Pane-level commands (`SPC w`, `SPC b`) that need to work from inside Neovim
+> are exposed as Neovim commands via the msgpack-RPC API and mapped in `nvim/init.lua`.
 
 | Prefix | Namespace |
 |---|---|
@@ -389,9 +404,166 @@ Python communicates with Electron via **JSON-RPC 2.0 over stdin/stdout**.
 
 ---
 
-## 8. File System Model
+## 8. Neovim Integration
 
-### 8.1 Real OS Filesystem
+### 8.1 Architecture
+
+Neovim runs as a headless subprocess in `--embed` mode. Electron's main process spawns it,
+communicates via **msgpack-RPC** using the `neovim` npm package, and forwards UI grid events
+to the renderer for drawing.
+
+```
+Neovim process
+  nvim --embed -u ~/.config/prismarine/nvim/init.lua
+       │
+       │ msgpack-RPC over stdio
+       │
+Electron Main
+  neovim npm client
+  - attach to UI ("ext_linegrid", "ext_multigrid")
+  - send nvim_open_file, nvim_input, resize events
+  - receive grid_line, hl_attr_define, flush, cursor_goto events
+       │
+       │ Electron IPC (contextBridge)
+       │
+Renderer (React)
+  Neovim grid component
+  - DOM grid renderer (V1)     → one <span> per cell, updated on flush
+  - Canvas renderer (V2)       → full canvas repaint, better performance
+  - handles font metrics, wide chars, ligatures
+```
+
+Each open `file-editor` pane has its own Neovim window within **one shared Neovim instance**.
+Files are opened as Neovim buffers (`nvim_open_file`). Splits inside Neovim are
+*not* used — Prismarine's pane system handles all splitting. Neovim's viewport is
+resized to match the pane's pixel dimensions on every layout change.
+
+### 8.2 Bundled Config
+
+Prismarine ships a minimal, curated Neovim config at:
+
+```
+~/.config/prismarine/nvim/
+├── init.lua               ← entry point; well-commented; safe to edit
+└── lua/
+    └── prismarine/
+        ├── options.lua    ← sensible defaults (relative numbers, etc.)
+        ├── keymaps.lua    ← Prismarine-aware leader mappings
+        └── theme.lua      ← highlight group sync with Prismarine theme
+```
+
+**What the bundled config includes:**
+
+- Sensible editor defaults (relative line numbers, `expandtab`, `undofile`, clipboard=unnamed)
+- `Space` as `mapleader`
+- `SPC w` / `SPC b` commands that call back into Prismarine via a thin RPC bridge
+  (so pane splitting and buffer switching work from inside Neovim without leaving the editor)
+- Highlight group sync — Prismarine's active `.theme.p8e` sets Neovim background and accent colours
+- `lazy.nvim` as plugin manager (present but no plugins loaded by default)
+
+**What the bundled config deliberately omits:**
+
+- No LSP — too many system dependencies; user opts in
+- No Telescope / fzf — Prismarine's command palette handles fuzzy finding at the workspace level
+- No statusline plugins — Prismarine renders its own status bar outside the Neovim grid
+- No auto-pairs, no snippets — user territory
+
+The bundled config is a clean foundation, not an opinionated distribution.
+
+### 8.3 Config Path
+
+**Default:** `~/.config/prismarine/nvim/init.lua`
+
+**Override in `init.py`:**
+
+```python
+from prismarine import editor
+
+# Use system Neovim config (full power, all plugins)
+editor.set_nvim_config("~/.config/nvim")
+
+# Use a project-specific config
+editor.set_nvim_config("~/work/.nvim")
+
+# Absolute path
+editor.set_nvim_config("/etc/prismarine/shared-nvim")
+```
+
+**Override via environment variable** (useful for CI or shared installs):
+
+```bash
+PRISMARINE_NVIM_CONFIG=~/.config/nvim prismarine
+```
+
+Priority: env var > `init.py` > default bundled config.
+
+### 8.4 Neovim ↔ Prismarine RPC Bridge
+
+A small Lua module (injected at startup) lets Neovim call back into Prismarine:
+
+```lua
+-- available in any nvim/init.lua or plugin
+local p = require("prismarine")
+
+-- open a new Prismarine pane (not a Neovim split)
+p.split_right()
+p.split_below()
+
+-- switch to a different buffer type
+p.open_explorer()
+p.open_browser("https://docs.neovim.io")
+
+-- run a Prismarine command by name
+p.command("fetch-otp-github")
+```
+
+This means Neovim power users can map these to their own `SPC w` bindings inside `init.lua`
+and never have to think about the Prismarine/Neovim boundary. Everything feels like one system.
+
+### 8.5 Grid Renderer
+
+The renderer receives Neovim UI events and draws them into the pane.
+
+**V1 — DOM renderer (ships first):**
+
+```
+grid_line event → update cell state array → React re-render
+                  one <span> per cell with inline style (fg, bg, bold, italic)
+flush event     → commit the frame
+```
+
+Acceptable for most use. Can stutter on large files or fast cursor movement.
+
+**V2 — Canvas renderer (planned):**
+
+```
+grid_line event → write to offscreen buffer
+flush event     → requestAnimationFrame → canvas.drawImage from offscreen buffer
+```
+
+Matches Neovide-class performance. Enables sub-pixel font rendering and smooth cursor animation.
+
+Font metrics (cell width × height) are calculated once on load from a hidden measurement canvas,
+then passed to Neovim as the grid cell size via `nvim_ui_attach`.
+
+### 8.6 Graceful Degradation
+
+If `nvim` is not found on `$PATH` at startup:
+
+1. Prismarine shows a **one-time dismissible notice**:
+   > *Neovim not found. Using built-in editor. [Install Neovim] [Dismiss]*
+2. All `file-editor` buffers fall back to **CodeMirror 6 + `@codemirror/vim`**
+3. All other Prismarine features (browser, Prisms, Python scripting) work normally
+4. Once Neovim is installed and Prismarine restarted, it switches automatically
+
+The fallback is intentionally limited — it signals "install Neovim" rather than trying to
+replicate the full experience. No config migration or feature parity is guaranteed.
+
+---
+
+## 9. File System Model
+
+### 14.1 Real OS Filesystem
 
 Unlike V1's `InMemoryFS`, V2 maps directly to the OS filesystem via Node.js `fs` APIs
 (exposed to the renderer via Electron's `contextBridge`).
@@ -411,7 +583,7 @@ interface PrismarineFS {
 }
 ```
 
-### 8.2 Special Files
+### 14.2 Special Files
 
 | Filename | Purpose |
 |---|---|
@@ -421,7 +593,7 @@ interface PrismarineFS {
 | `.stopwatch.p8e` | Persisted stopwatch state |
 | `*`.p8e` sidecar files | Structured content/behaviour linked to a parent file |
 
-### 8.3 Directory Structure Conventions
+### 14.3 Directory Structure Conventions
 
 ```
 ~/.config/prismarine/
@@ -438,9 +610,9 @@ interface PrismarineFS {
 
 ---
 
-## 9. Prism System
+## 10. Prism System
 
-### 9.1 What Is a Prism?
+### 14.1 What Is a Prism?
 
 A Prism is a UI building block. A directory's `.index.p8e` file defines an ordered list of Prisms
 that render when the directory is viewed in Interface mode.
@@ -459,7 +631,7 @@ Because they go through a serialisation boundary, they **cannot carry React stat
 hooks**. If a Prism needs those, it belongs in Tier 3 — a compiled React component distributed
 as a plugin package, analogous to a VS Code extension.
 
-### 9.2 Built-in Prisms (V2)
+### 14.2 Built-in Prisms (V2)
 
 | Prism | Description |
 |---|---|
@@ -480,7 +652,7 @@ as a plugin package, analogous to a VS Code extension.
 | `script` | Runs a Python command and renders its output |
 | `browser-preview` | Embeds a live BrowserView at a given URL |
 
-### 9.3 Python-Registered Prisms
+### 14.3 Python-Registered Prisms
 
 ```python
 @prisms.register("my-widget")
@@ -508,7 +680,7 @@ prisms:
       count: 42
 ```
 
-### 9.4 `.index.p8e` YAML Format
+### 14.4 `.index.p8e` YAML Format
 
 ```yaml
 prisms:
@@ -549,24 +721,24 @@ prisms:
             label: "Checking"
 ```
 
-### 9.5 YAML Parser
+### 14.5 YAML Parser
 
 V2 ships a **real YAML parser** (`js-yaml`) replacing V1's custom parser. The custom parser is
 retained only as a fallback for edge cases. All serialisation uses `js-yaml` with a safe schema.
 
 ---
 
-## 10. Craft Editor (Visual & Code)
+## 11. Craft Editor (Visual & Code)
 
 The Craft Editor allows building `.index.p8e` layouts without touching YAML.
 
-### 10.1 Entry Points
+### 14.1 Entry Points
 
 - `SPC p c` → open Craft Editor for the current directory
 - Right-click directory → "Edit Interface"
 - Toolbar "Craft UX" button (mouse-accessible)
 
-### 10.2 Dual-Mode Editor
+### 14.2 Dual-Mode Editor
 
 The Craft Editor has two modes, switchable via a tab at the top:
 
@@ -578,7 +750,7 @@ The Craft Editor has two modes, switchable via a tab at the top:
 Both modes stay in sync. Switching from Visual → Code serialises. Switching Code → Visual parses.
 Validation errors in Code mode are shown inline; switching to Visual is blocked until errors are resolved.
 
-### 10.3 Visual Mode Layout
+### 14.3 Visual Mode Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -596,7 +768,7 @@ Validation errors in Code mode are shown inline; switching to Visual is blocked 
 └──────────┴───────────────────────────────┴────────────────────┘
 ```
 
-### 10.4 Fixes from V1
+### 14.4 Fixes from V1
 
 The following V1 bugs are resolved in V2:
 
@@ -607,9 +779,9 @@ The following V1 bugs are resolved in V2:
 
 ---
 
-## 11. Browser Integration
+## 12. Browser Integration
 
-### 11.1 BrowserView Architecture
+### 14.1 BrowserView Architecture
 
 Browser tabs use Electron's `BrowserView` API. Each tab is a separate `BrowserView` instance
 attached to the main `BrowserWindow`, positioned and resized by the main process to fill the
@@ -618,7 +790,7 @@ active pane when `browser-mode` is active.
 This gives true Chromium rendering — not a sandboxed iframe — including cookies, sessions,
 extensions (future), and DevTools.
 
-### 11.2 Browser Automation via Python
+### 14.2 Browser Automation via Python
 
 See §7.3 for the full `browser` API. The automation model is:
 
@@ -632,14 +804,14 @@ See §7.3 for the full `browser` API. The automation model is:
 This is equivalent to Playwright's architecture, but the "browser" is the user's own Prismarine
 session, with their real login sessions. No CDP tunnelling needed — Electron owns the webContents.
 
-### 11.3 Security Model
+### 14.3 Security Model
 
 - Python scripts run as a subprocess with the same OS permissions as the user
 - `secrets.get()` calls never log credentials; they are transmitted via IPC with no disk writes
 - Browser automation is opt-in; nothing runs without a user-triggered command or explicit `init.py` hook
 - A future sandboxed mode will restrict Python plugins to declared permission scopes
 
-### 11.4 Browser Action Recorder
+### 14.4 Browser Action Recorder
 
 Prismarine includes a first-class action recorder that watches user interactions in a BrowserView
 and exports them as a runnable Python script using the Prismarine `browser` API and CSS selectors.
@@ -724,9 +896,9 @@ Stop recording
 
 ---
 
-## 12. Theming
+## 13. Theming
 
-### 12.1 `.theme.p8e` Files
+### 14.1 `.theme.p8e` Files
 
 A `.theme.p8e` file in any directory applies CSS variable overrides to that directory's Prism interface
 and all subdirectory interfaces (unless overridden deeper).
@@ -747,7 +919,7 @@ prism-overrides:
     checked-color: "#7c3aed"
 ```
 
-### 12.2 Global Theme
+### 14.2 Global Theme
 
 The global theme is set in `init.py`:
 
@@ -760,9 +932,9 @@ ui.load_theme("~/.config/prismarine/my.theme.p8e")   # custom
 
 ---
 
-## 13. Plugin System
+## 14. Plugin System
 
-### 13.1 Installing a Plugin
+### 14.1 Installing a Plugin
 
 ```python
 # init.py
@@ -772,7 +944,7 @@ plugins.load("~/.config/prismarine/plugins/my_plugin.py")
 plugins.load("prismarine-plugin-github")        # installed via pip
 ```
 
-### 13.2 Plugin Structure
+### 14.2 Plugin Structure
 
 ```python
 # my_plugin.py
@@ -797,7 +969,7 @@ def setup(config: dict):
 
 ---
 
-## 14. Keyboard Shortcut Reference (Default)
+## 15. Keyboard Shortcut Reference (Default)
 
 ### Global (all modes)
 
@@ -862,22 +1034,23 @@ def setup(config: dict):
 
 ---
 
-## 15. Known Issues Carried Forward from V1
+## 16. Known Issues Carried Forward from V1
 
 These are resolved in V2:
 
 | Issue | Resolution |
 |---|---|
-| vstack/hstack render bug | Fixed (§10.4) |
+| vstack/hstack render bug | Fixed (§11.4) |
 | ShortcutPrism alert() stub | Real navigate() call |
 | executeFile alert() stub | Real buffer-open command |
 | Drag-and-drop unimplemented | `@dnd-kit/core` |
 | Custom YAML parser fragility | Replaced with `js-yaml` |
 | No undo/redo in Craft Editor | Implemented with `useReducer` history stack |
+| CodeMirror vim emulation (~80% fidelity) | Replaced with real Neovim embed |
 
 ---
 
-## 16. Open Questions / Future Extensions
+## 17. Open Questions / Future Extensions
 
 | Topic | Status |
 |---|---|
@@ -890,10 +1063,14 @@ These are resolved in V2:
 | 1Password / KeePass secret providers | Planned |
 | `<webview>` vs `BrowserView` vs `WebContentsView` | Electron is soft-deprecating `BrowserView` in favour of `WebContentsView` (Electron 28+). **Use `WebContentsView` for new development.** API is nearly identical; geometry constraint remains: pane layout must report pixel coordinates to the main process on every resize event. |
 | Sync (optional, user-controlled) | Out of scope; use Git |
+| Neovim canvas renderer | Planned for V2; DOM renderer ships in V1 |
+| Neovim LSP in bundled config | Opt-in only; user adds to bundled config or switches to system config |
+| Ligature rendering in grid | Non-trivial; deferred to canvas renderer milestone |
+| Single Neovim instance vs per-pane | V1 ships single shared instance; per-pane isolation evaluated in V2 |
 
 ---
 
-## 17. Glossary
+## 18. Glossary
 
 | Term | Definition |
 |---|---|
@@ -909,3 +1086,6 @@ These are resolved in V2:
 | **Leader key** | Space bar; opens the command namespace in Normal state |
 | **Sidecar** | A `.p8e` file paired with a content file (e.g., `.notes.txt.p8e`) |
 | **Python sidecar** | The CPython subprocess that runs `init.py` and plugins |
+| **Neovim embed** | Neovim running in `--embed` headless mode, driven via msgpack-RPC |
+| **Bundled nvim config** | The minimal Neovim config shipped with Prismarine at `~/.config/prismarine/nvim/` |
+| **Grid renderer** | The React component that draws Neovim's character grid into a pane |

@@ -56,10 +56,13 @@ And if you can write Python, you can script *anything* — keybindings, browser 
 - Pin frequently visited directories to the sidebar
 - Hidden `.p8e` sidecar files stay out of the way
 
-### 📝 editor
-- CodeMirror 6 — syntax highlighting, language servers, fast
-- Opens alongside other panes, not instead of them
-- Scratch buffers for quick notes that don't need to be files yet
+### 📝 editor (neovim ✦)
+- **Real Neovim** running in `--embed` headless mode — not an emulation
+- Your existing `init.lua`, plugins, LSP, Treesitter — all work natively
+- Ships with a **minimal bundled config** (`~/.config/prismarine/nvim/`) — fast, clean, no plugin sprawl
+- One line to switch to your system config: `editor.set_nvim_config("~/.config/nvim")`
+- `Space` leader in Neovim and Prismarine coexist cleanly — editor buffer focused → Neovim owns `SPC`; everything else → Prismarine owns it
+- Graceful fallback to CodeMirror 6 + vim mode if Neovim is not installed
 
 ### 🌐 browser (real chromium ✦)
 - Full `WebContentsView` embed — not an iframe, not a webview, actual Chromium
@@ -294,13 +297,15 @@ Electron App
 | renderer | React 18 + TypeScript |
 | styling | Tailwind CSS |
 | browser pane | Electron `WebContentsView` |
-| text editor | CodeMirror 6 |
+| text editor | **Neovim** (`--embed` + msgpack-RPC) |
+| editor fallback | CodeMirror 6 + `@codemirror/vim` |
+| neovim ipc | `neovim` npm (msgpack-RPC) |
 | drag-and-drop | `@dnd-kit/core` |
 | python runtime | CPython sidecar (subprocess) |
 | ipc | JSON-RPC 2.0 over stdio |
 | build | Vite + electron-vite |
 | testing | Vitest + Playwright |
-| ui config format | YAML (`.index.p8e`) |
+| ui config format | YAML (`.index.p8e`) + Lua (`nvim/init.lua`) |
 | scripting | Python (`init.py`) |
 
 ---
