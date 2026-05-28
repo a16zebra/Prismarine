@@ -17,7 +17,7 @@
 [![Built with Electron](https://img.shields.io/badge/Built%20with-Electron-47848F?logo=electron)](https://electronjs.org)
 [![Python](https://img.shields.io/badge/Scriptable%20in-Python-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Built with Claude](https://img.shields.io/badge/Built%20with-Claude%20AI-D97757?logo=anthropic&logoColor=white)](https://anthropic.com)
-[![Status: Spec Complete](https://img.shields.io/badge/Status-Spec%20Complete-8B5CF6)](SPEC.md)
+[![Status: Spec Complete](https://img.shields.io/badge/Status-Spec%20Complete-8B5CF6)](docs/SPEC.md)
 
 </div>
 
@@ -362,7 +362,7 @@ Prismarine is being designed and built in active collaboration with **Claude** (
 
 That means:
 
-- 📐 the **full specification** (architecture, IPC contracts, Python API surface, Prism system, keyboard model) was designed in conversation with Claude and lives in [`SPEC.md`](SPEC.md)
+- 📐 the **full specification** (architecture, IPC contracts, Python API surface, Prism system, keyboard model) was designed in conversation with Claude and lives in [`SPEC.md`](docs/SPEC.md)
 - 🐍 the **Python plugin examples** — including the browser automation layer and OTP watcher — were written with Claude
 - 🧱 **implementation** is being built iteratively, with Claude writing, reviewing, and debugging code alongside the human author
 - 📝 this **README** was written with Claude (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧
@@ -375,7 +375,7 @@ This is not "AI generated and abandoned." It is a genuine human–AI collaborati
 
 ## contributing 🤝
 
-The spec lives in [`SPEC.md`](SPEC.md). Read it first.
+The spec lives in [`SPEC.md`](docs/SPEC.md). Read it first.
 
 The cleanest first contribution is picking one item from the roadmap above and building it to spec.
 Open an issue before starting anything large — architecture decisions are still being finalised. (._.)
