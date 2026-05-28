@@ -58,7 +58,7 @@ function handlePaletteKey(e: KeyboardEvent): void {
     return
   }
 
-  if (e.key === 'ArrowDown') {
+  if (e.key === 'ArrowDown' || (e.key === 'n' && e.ctrlKey)) {
     const commands = commandRegistry.search(state.paletteQuery)
     state.setPaletteSelectedIndex(
       Math.min(state.paletteSelectedIndex + 1, commands.length - 1),
@@ -66,7 +66,7 @@ function handlePaletteKey(e: KeyboardEvent): void {
     return
   }
 
-  if (e.key === 'ArrowUp') {
+  if (e.key === 'ArrowUp' || (e.key === 'p' && e.ctrlKey)) {
     state.setPaletteSelectedIndex(Math.max(state.paletteSelectedIndex - 1, 0))
     return
   }
