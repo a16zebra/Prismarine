@@ -10,6 +10,38 @@ import type {
 } from '../../shared/types'
 import { majorModeFor } from '../../shared/types'
 
+// ── Tree helpers ──────────────────────────────────────────────────────────────
+
+/** Remove a pane leaf by id. Returns null if this node was the removed leaf. */
+function removePaneFromTree(node: LayoutNode, paneId: string): LayoutNode | null {
+  if (node.kind === 'leaf') return node.pane.id === paneId ? null : node
+  const newA = removePaneFromTree(node.a, paneId)
+  const newB = removePaneFromTree(node.b, paneId)
+  if (newA === null) return newB
+  if (newB === null) return newA
+  return { ...node, a: newA, b: newB }
+}
+
+function splitPaneInTree(
+  node: LayoutNode,
+  paneId: string,
+  direction: 'h' | 'v',
+  splitId: string,
+  newPane: Pane,
+): LayoutNode {
+  if (node.kind === 'leaf') {
+    if (node.pane.id !== paneId) return node
+    return { kind: 'node', id: splitId, direction, size: 0.5, a: node, b: { kind: 'leaf', pane: newPane } }
+  }
+  return { ...node, a: splitPaneInTree(node.a, paneId, direction, splitId, newPane), b: splitPaneInTree(node.b, paneId, direction, splitId, newPane) }
+}
+
+function updateSplitSize(node: LayoutNode, splitId: string, size: number): LayoutNode {
+  if (node.kind === 'leaf') return node
+  if (node.id === splitId) return { ...node, size }
+  return { ...node, a: updateSplitSize(node.a, splitId, size), b: updateSplitSize(node.b, splitId, size) }
+}
+
 // ── Initial state ─────────────────────────────────────────────────────────────
 
 export const INITIAL_BUFFER_ID = nanoid()
@@ -57,6 +89,9 @@ export interface StoreState {
   setFocusedPane(paneId: string): void
   setEditingState(bufferId: string, state: EditingState): void
   switchBufferInPane(paneId: string, bufferId: string): void
+  splitPane(paneId: string, direction: 'h' | 'v'): void
+  closePane(paneId: string): void
+  setSplitSize(splitId: string, size: number): void
 
   // Selectors
   focusedPane(): Pane | undefined
@@ -114,6 +149,46 @@ export const useStore = create<StoreState>((set, get) => ({
       if (!buf) return s
       return { buffers: { ...s.buffers, [bufferId]: { ...buf, editingState: state } } }
     })
+  },
+
+  splitPane(paneId, direction) {
+    const newBufferId = nanoid()
+    const newPaneId = nanoid()
+    const splitId = nanoid()
+    const newBuffer: PrismarineBuffer = {
+      id: newBufferId,
+      type: 'scratch',
+      title: 'scratch',
+      majorMode: 'scratch-mode',
+      editingState: 'normal',
+      history: { back: [], forward: [] },
+    }
+    const newPane: Pane = { id: newPaneId, bufferId: newBufferId }
+    set((s) => ({
+      buffers: { ...s.buffers, [newBufferId]: newBuffer },
+      layout: {
+        root: splitPaneInTree(s.layout.root, paneId, direction, splitId, newPane),
+        focusedPaneId: newPaneId,
+      },
+    }))
+  },
+
+  closePane(paneId) {
+    set((s) => {
+      const allPanes = collectPanes(s.layout.root)
+      if (allPanes.length <= 1) return s
+      const newRoot = removePaneFromTree(s.layout.root, paneId)
+      if (!newRoot) return s
+      const remaining = collectPanes(newRoot)
+      const focusedPaneId = remaining.some((p) => p.id === s.layout.focusedPaneId)
+        ? s.layout.focusedPaneId
+        : remaining[0]!.id
+      return { layout: { root: newRoot, focusedPaneId } }
+    })
+  },
+
+  setSplitSize(splitId, size) {
+    set((s) => ({ layout: { ...s.layout, root: updateSplitSize(s.layout.root, splitId, size) } }))
   },
 
   switchBufferInPane(paneId, bufferId) {

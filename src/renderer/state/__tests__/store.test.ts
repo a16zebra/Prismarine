@@ -62,6 +62,77 @@ describe('setEditingState', () => {
   })
 })
 
+describe('splitPane', () => {
+  it('adds a new pane and buffer to the tree', () => {
+    const before = useStore.getState().layout
+    expect(before.root.kind).toBe('leaf')
+
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'h')
+
+    const root = useStore.getState().layout.root
+    expect(root.kind).toBe('node')
+    if (root.kind === 'node') {
+      expect(root.direction).toBe('h')
+      expect(root.size).toBe(0.5)
+      expect(root.a.kind).toBe('leaf')
+      expect(root.b.kind).toBe('leaf')
+    }
+  })
+
+  it('focuses the new pane after splitting', () => {
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'v')
+    const layout = useStore.getState().layout
+    expect(layout.focusedPaneId).not.toBe(INITIAL_PANE_ID)
+  })
+
+  it('creates a new scratch buffer for the new pane', () => {
+    const beforeCount = Object.keys(useStore.getState().buffers).length
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'h')
+    expect(Object.keys(useStore.getState().buffers)).toHaveLength(beforeCount + 1)
+  })
+})
+
+describe('closePane', () => {
+  it('collapses the tree so the sibling takes the space', () => {
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'h')
+    const newFocusedId = useStore.getState().layout.focusedPaneId
+
+    useStore.getState().closePane(newFocusedId)
+
+    const root = useStore.getState().layout.root
+    expect(root.kind).toBe('leaf')
+    if (root.kind === 'leaf') expect(root.pane.id).toBe(INITIAL_PANE_ID)
+  })
+
+  it('does not close the last remaining pane', () => {
+    useStore.getState().closePane(INITIAL_PANE_ID)
+    expect(useStore.getState().layout.root.kind).toBe('leaf')
+  })
+
+  it('updates focusedPaneId when the focused pane is closed', () => {
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'h')
+    const newPaneId = useStore.getState().layout.focusedPaneId
+    expect(newPaneId).not.toBe(INITIAL_PANE_ID)
+
+    useStore.getState().closePane(newPaneId)
+    expect(useStore.getState().layout.focusedPaneId).toBe(INITIAL_PANE_ID)
+  })
+})
+
+describe('setSplitSize', () => {
+  it('updates the size fraction of a split node', () => {
+    useStore.getState().splitPane(INITIAL_PANE_ID, 'h')
+    const root = useStore.getState().layout.root
+    if (root.kind !== 'node') throw new Error('expected split node')
+
+    useStore.getState().setSplitSize(root.id, 0.3)
+
+    const updated = useStore.getState().layout.root
+    if (updated.kind !== 'node') throw new Error('expected split node')
+    expect(updated.size).toBe(0.3)
+  })
+})
+
 describe('focus selectors', () => {
   it('focusedPane returns the pane matching focusedPaneId', () => {
     const pane = useStore.getState().focusedPane()

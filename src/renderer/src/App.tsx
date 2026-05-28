@@ -1,12 +1,21 @@
 import { useState } from 'react'
 import { useStore } from '../state/store'
+import { PaneTree } from './components/PaneTree'
+import { StatusBar } from './components/StatusBar'
+import { Minibuffer } from './components/Minibuffer'
 
 function App(): JSX.Element {
+  const layout = useStore((s) => s.layout)
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-900">
-      <h1 className="text-4xl font-bold tracking-tight text-white">Prismarine</h1>
+    <div className="flex h-screen flex-col overflow-hidden bg-gray-900 text-white">
+      <StatusBar />
+      <main className="flex-1 overflow-hidden">
+        <PaneTree node={layout.root} />
+      </main>
+      <Minibuffer />
+      {/* M1 IPC debug panel — kept for e2e tests */}
       <DebugPanel />
-      <StoreInspector />
     </div>
   )
 }
@@ -20,7 +29,7 @@ function DebugPanel(): JSX.Element {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300">
+    <div className="fixed bottom-10 right-4 rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300">
       <p className="mb-2 font-semibold text-gray-400">IPC Debug</p>
       <button
         data-testid="ping-button"
@@ -34,18 +43,6 @@ function DebugPanel(): JSX.Element {
           {result}
         </p>
       )}
-    </div>
-  )
-}
-
-function StoreInspector(): JSX.Element {
-  const { buffers, layout, minibufferText, minibufferActive } = useStore()
-  const snapshot = { buffers, layout, minibufferText, minibufferActive }
-
-  return (
-    <div className="fixed left-4 top-4 max-h-[80vh] w-80 overflow-auto rounded-lg border border-gray-700 bg-gray-800 p-3 text-xs text-gray-300">
-      <p className="mb-2 font-semibold text-gray-400">Store Inspector</p>
-      <pre className="whitespace-pre-wrap break-all font-mono">{JSON.stringify(snapshot, null, 2)}</pre>
     </div>
   )
 }

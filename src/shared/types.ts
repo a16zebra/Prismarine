@@ -69,6 +69,7 @@ export interface LayoutLeaf {
 /** Binary split tree interior node. `size` is the 0–1 fraction for child `a`. */
 export interface LayoutSplit {
   kind: 'node'
+  id: string
   direction: 'h' | 'v'
   /** Fraction (0–1) of total space given to child `a`. */
   size: number
