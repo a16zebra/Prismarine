@@ -1,4 +1,7 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import { IpcChannel } from '../shared/ipc'
+import type { PingResponse } from '../shared/ipc'
 
-// Empty contextBridge surface — extended in M1
-contextBridge.exposeInMainWorld('prismarine', {})
+contextBridge.exposeInMainWorld('prismarine', {
+  ping: (): Promise<PingResponse> => ipcRenderer.invoke(IpcChannel.PING),
+})

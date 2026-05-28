@@ -13,3 +13,19 @@ test('app launches and shows Prismarine title', async () => {
 
   await electronApp.close()
 })
+
+test('ping round-trip returns pong response', async () => {
+  const electronApp = await electron.launch({
+    args: [path.join(process.cwd(), 'out', 'main', 'index.js')],
+  })
+
+  const window = await electronApp.firstWindow()
+  await window.waitForLoadState('domcontentloaded')
+
+  await window.click('[data-testid="ping-button"]')
+  const result = await window.textContent('[data-testid="ping-result"]')
+
+  expect(result).toMatch(/^pong /)
+
+  await electronApp.close()
+})

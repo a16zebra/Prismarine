@@ -1,5 +1,8 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
+import { IpcChannel } from '../shared/ipc'
+import type { PingResponse } from '../shared/ipc'
+import { APP_VERSION } from '../shared/index'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -19,6 +22,8 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+ipcMain.handle(IpcChannel.PING, (): PingResponse => `pong ${APP_VERSION}`)
 
 app.whenReady().then(() => {
   createWindow()
