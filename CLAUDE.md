@@ -2,29 +2,55 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Status
+## Build workflow
 
-This repository is **specification-complete but pre-implementation**. No source code exists yet. All implementation work must follow the detailed spec in `docs/SPEC.md` and the milestone build order in `docs/prompt_plan.md`. The granular checklist is in `docs/todo.md`.
+Read `docs/prompt_plan.md` before doing any implementation work. It contains the standing rules that apply to every milestone (no orphaned code, working state every time, strict TypeScript, tests are part of done). Build milestones in order — each one depends on the last.
 
-Milestones in `docs/prompt_plan.md` are designed so each one leaves the app in a launchable, testable state. Always complete a milestone fully before moving to the next.
+## Current state
 
-## Key Documents
-
-- `docs/SPEC.md` — authoritative V2.0 specification (architecture, data models, IPC contracts, file formats)
-- `docs/prompt_plan.md` — 28-milestone build blueprint (M0–M28), organized into 11 phases
-- `docs/todo.md` — granular checklist for each milestone
-
-## Planned Commands
-
-These do not exist yet and will be set up in M0:
+**M0 complete** (committed to `dev`). The scaffold is live and all checks pass:
 
 ```
-npm run dev       # launch Electron + Vite dev environment
-npm run build     # package the Electron app
-npm test          # Vitest unit tests + Playwright e2e
-npx vitest run    # run a single test file: npx vitest run src/path/to/spec.ts
-npx playwright test --grep "test name"  # run a single e2e test
+npm run dev        # Electron window opens, Vite dev server on :5173
+npm test           # Vitest unit tests (2 passing)
+npm run test:e2e   # electron-vite build + Playwright smoke test (1 passing)
 ```
+
+**Next milestone: M1** — Typed, secure IPC bridge (`contextBridge` ping round-trip). Read the M1 block in `docs/prompt_plan.md` before starting.
+
+## Commands
+
+```
+npm run dev                              # launch app (hot reload)
+npm run build                            # production build → out/
+npm test                                 # unit tests (vitest)
+npm run test:e2e                         # build + e2e smoke tests (playwright)
+npx vitest run src/path/to/file.test.ts  # single test file
+npx playwright test --grep "test name"  # single e2e test
+npm run lint                             # eslint
+npm run format                           # prettier
+```
+
+## Source layout
+
+```
+src/
+  main/         — Electron main process (Node.js)
+  preload/      — contextBridge surface (empty for now; extended each milestone)
+  renderer/     — React 18 app
+    index.html
+    src/
+      App.tsx
+      main.tsx
+      assets/main.css   — Tailwind entry (@tailwind base/components/utilities)
+      env.d.ts
+  shared/       — types and constants imported by both main and renderer
+    index.ts            — APP_NAME, APP_VERSION
+    __tests__/
+e2e/            — Playwright tests (run against built output in out/)
+```
+
+Key config files: `electron.vite.config.ts`, `tsconfig.node.json` (main+preload), `tsconfig.web.json` (renderer), `vitest.config.mts`.
 
 ## Architecture Overview
 
