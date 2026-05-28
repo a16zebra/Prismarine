@@ -61,29 +61,28 @@ const initialLayout: Layout = {
   focusedPaneId: INITIAL_PANE_ID,
 }
 
-export function makeInitialState(): Pick<
-  StoreState,
-  'buffers' | 'layout' | 'minibufferText' | 'minibufferActive'
-> {
-  return {
-    buffers: { [INITIAL_BUFFER_ID]: initialBuffer },
-    layout: initialLayout,
-    minibufferText: '',
-    minibufferActive: false,
-  }
-}
-
 // ── Store shape ───────────────────────────────────────────────────────────────
 
 export interface StoreState {
   buffers: Record<string, PrismarineBuffer>
   layout: Layout
-  /** Minibuffer display text (placeholder for M4+). */
   minibufferText: string
-  /** Whether the minibuffer is active. */
   minibufferActive: boolean
 
-  // Actions
+  // Leader / keybinding sequence state
+  leaderKey: string
+  leaderActive: boolean
+  leaderSequence: string[]
+
+  // Command palette
+  paletteOpen: boolean
+  paletteQuery: string
+  paletteSelectedIndex: number
+
+  // Maximized pane (null = normal layout)
+  maximizedPaneId: string | null
+
+  // Actions — layout
   createBuffer(type: BufferType, opts?: { path?: string; url?: string; title?: string }): string
   closeBuffer(bufferId: string): void
   setFocusedPane(paneId: string): void
@@ -92,11 +91,46 @@ export interface StoreState {
   splitPane(paneId: string, direction: 'h' | 'v'): void
   closePane(paneId: string): void
   setSplitSize(splitId: string, size: number): void
+  cycleFocusedPane(): void
+  toggleMaximizePane(paneId: string): void
+
+  // Actions — minibuffer / leader / palette
+  setMinibuffer(text: string, active: boolean): void
+  setLeaderKey(key: string): void
+  setLeaderActive(active: boolean, sequence?: string[]): void
+  openPalette(): void
+  closePalette(): void
+  setPaletteQuery(q: string): void
+  setPaletteSelectedIndex(i: number): void
 
   // Selectors
   focusedPane(): Pane | undefined
   focusedBuffer(): PrismarineBuffer | undefined
   openBuffers(): PrismarineBuffer[]
+}
+
+// ── makeInitialState (defined after StoreState so Pick resolves correctly) ────
+
+export function makeInitialState(): Pick<
+  StoreState,
+  | 'buffers' | 'layout' | 'minibufferText' | 'minibufferActive'
+  | 'leaderKey' | 'leaderActive' | 'leaderSequence'
+  | 'paletteOpen' | 'paletteQuery' | 'paletteSelectedIndex'
+  | 'maximizedPaneId'
+> {
+  return {
+    buffers: { [INITIAL_BUFFER_ID]: initialBuffer },
+    layout: initialLayout,
+    minibufferText: '',
+    minibufferActive: false,
+    leaderKey: ' ',
+    leaderActive: false,
+    leaderSequence: [],
+    paletteOpen: false,
+    paletteQuery: '',
+    paletteSelectedIndex: 0,
+    maximizedPaneId: null,
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,6 +148,13 @@ export const useStore = create<StoreState>((set, get) => ({
   layout: initialLayout,
   minibufferText: '',
   minibufferActive: false,
+  leaderKey: ' ',
+  leaderActive: false,
+  leaderSequence: [],
+  paletteOpen: false,
+  paletteQuery: '',
+  paletteSelectedIndex: 0,
+  maximizedPaneId: null,
 
   createBuffer(type, opts = {}) {
     const id = nanoid()
@@ -189,6 +230,50 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setSplitSize(splitId, size) {
     set((s) => ({ layout: { ...s.layout, root: updateSplitSize(s.layout.root, splitId, size) } }))
+  },
+
+  cycleFocusedPane() {
+    set((s) => {
+      const panes = collectPanes(s.layout.root)
+      const idx = panes.findIndex((p) => p.id === s.layout.focusedPaneId)
+      const next = panes[(idx + 1) % panes.length]
+      if (!next) return s
+      return { layout: { ...s.layout, focusedPaneId: next.id } }
+    })
+  },
+
+  toggleMaximizePane(paneId) {
+    set((s) => ({
+      maximizedPaneId: s.maximizedPaneId === paneId ? null : paneId,
+    }))
+  },
+
+  setMinibuffer(text, active) {
+    set({ minibufferText: text, minibufferActive: active })
+  },
+
+  setLeaderKey(key) {
+    set({ leaderKey: key })
+  },
+
+  setLeaderActive(active, sequence = []) {
+    set({ leaderActive: active, leaderSequence: sequence })
+  },
+
+  openPalette() {
+    set({ paletteOpen: true, paletteQuery: '', paletteSelectedIndex: 0 })
+  },
+
+  closePalette() {
+    set({ paletteOpen: false, paletteQuery: '', paletteSelectedIndex: 0 })
+  },
+
+  setPaletteQuery(q) {
+    set({ paletteQuery: q, paletteSelectedIndex: 0 })
+  },
+
+  setPaletteSelectedIndex(i) {
+    set({ paletteSelectedIndex: i })
   },
 
   switchBufferInPane(paneId, bufferId) {

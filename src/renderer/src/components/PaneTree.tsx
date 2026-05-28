@@ -11,7 +11,7 @@ export function PaneTree({ node }: { node: LayoutNode }): JSX.Element {
 
 // ── Leaf ──────────────────────────────────────────────────────────────────────
 
-function PaneLeaf({ pane }: { pane: Pane }): JSX.Element {
+export function PaneLeaf({ pane }: { pane: Pane }): JSX.Element {
   const buffers = useStore((s) => s.buffers)
   const focusedPaneId = useStore((s) => s.layout.focusedPaneId)
   const setFocusedPane = useStore((s) => s.setFocusedPane)

@@ -1,24 +1,38 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../state/store'
-import { PaneTree } from './components/PaneTree'
+import { PaneTree, PaneLeaf } from './components/PaneTree'
 import { StatusBar } from './components/StatusBar'
 import { Minibuffer } from './components/Minibuffer'
 import { createKeyHandler } from '../input/keyHandler'
+import { registerBuiltins } from '../commands/builtins'
+import type { LayoutNode } from '../../shared/types'
+
+function findPane(node: LayoutNode, paneId: string): { id: string; bufferId: string } | undefined {
+  if (node.kind === 'leaf') return node.pane.id === paneId ? node.pane : undefined
+  return findPane(node.a, paneId) ?? findPane(node.b, paneId)
+}
 
 function App(): JSX.Element {
   const layout = useStore((s) => s.layout)
+  const maximizedPaneId = useStore((s) => s.maximizedPaneId)
 
   useEffect(() => {
+    registerBuiltins()
     const handler = createKeyHandler()
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const maximizedPane = maximizedPaneId ? findPane(layout.root, maximizedPaneId) : null
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-900 text-white">
       <StatusBar />
       <main className="flex-1 overflow-hidden">
-        <PaneTree node={layout.root} />
+        {maximizedPane
+          ? <PaneLeaf pane={maximizedPane} />
+          : <PaneTree node={layout.root} />
+        }
       </main>
       <Minibuffer />
       {/* M1 IPC debug panel — kept for e2e tests */}

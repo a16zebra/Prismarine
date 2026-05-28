@@ -55,6 +55,51 @@ test('pane split, resize, focus, and close', async () => {
   await electronApp.close()
 })
 
+test('SPC w / splits pane via keyboard leader sequence', async () => {
+  const electronApp = await electron.launch({
+    args: [path.join(process.cwd(), 'out', 'main', 'index.js')],
+  })
+
+  const window = await electronApp.firstWindow()
+  await window.waitForLoadState('domcontentloaded')
+
+  // Click pane to focus it (ensure keydown target is not an input)
+  await window.locator('[data-testid="pane-leaf"]').first().click()
+  await expect(window.locator('[data-testid="pane-leaf"]')).toHaveCount(1)
+
+  // SPC w / → split right
+  await window.keyboard.press('Space')
+  await window.keyboard.press('w')
+  await window.keyboard.press('/')
+
+  await expect(window.locator('[data-testid="pane-leaf"]')).toHaveCount(2)
+
+  await electronApp.close()
+})
+
+test('SPC SPC opens command palette; Esc closes it', async () => {
+  const electronApp = await electron.launch({
+    args: [path.join(process.cwd(), 'out', 'main', 'index.js')],
+  })
+
+  const window = await electronApp.firstWindow()
+  await window.waitForLoadState('domcontentloaded')
+
+  // Click to focus pane
+  await window.locator('[data-testid="pane-leaf"]').first().click()
+
+  // SPC SPC → palette opens
+  await window.keyboard.press('Space')
+  await window.keyboard.press('Space')
+  await expect(window.locator('[data-testid="command-palette"]')).toBeVisible()
+
+  // Esc → palette closes
+  await window.keyboard.press('Escape')
+  await expect(window.locator('[data-testid="command-palette"]')).not.toBeVisible()
+
+  await electronApp.close()
+})
+
 test('editing state: Esc returns to Normal; non-editor ignores i', async () => {
   const electronApp = await electron.launch({
     args: [path.join(process.cwd(), 'out', 'main', 'index.js')],
