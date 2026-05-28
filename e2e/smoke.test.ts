@@ -55,6 +55,32 @@ test('pane split, resize, focus, and close', async () => {
   await electronApp.close()
 })
 
+test('editing state: Esc returns to Normal; non-editor ignores i', async () => {
+  const electronApp = await electron.launch({
+    args: [path.join(process.cwd(), 'out', 'main', 'index.js')],
+  })
+
+  const window = await electronApp.firstWindow()
+  await window.waitForLoadState('domcontentloaded')
+
+  // Initial editing state is 'normal'
+  await expect(window.locator('[data-testid="editing-state"]')).toHaveText('normal')
+
+  // Default buffer is scratch (non-editor) — pressing i must not change state
+  await window.locator('[data-testid="pane-leaf"]').first().click()
+  await window.keyboard.press('i')
+  await expect(window.locator('[data-testid="editing-state"]')).toHaveText('normal')
+
+  // Pressing Escape on an already-Normal buffer stays Normal (no crash)
+  await window.keyboard.press('Escape')
+  await expect(window.locator('[data-testid="editing-state"]')).toHaveText('normal')
+
+  // Major mode label is visible
+  await expect(window.locator('[data-testid="major-mode"]')).toHaveText('scratch-mode')
+
+  await electronApp.close()
+})
+
 test('ping round-trip returns pong response', async () => {
   const electronApp = await electron.launch({
     args: [path.join(process.cwd(), 'out', 'main', 'index.js')],

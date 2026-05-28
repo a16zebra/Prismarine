@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../state/store'
 import { PaneTree } from './components/PaneTree'
 import { StatusBar } from './components/StatusBar'
 import { Minibuffer } from './components/Minibuffer'
+import { createKeyHandler } from '../input/keyHandler'
 
 function App(): JSX.Element {
   const layout = useStore((s) => s.layout)
+
+  useEffect(() => {
+    const handler = createKeyHandler()
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gray-900 text-white">
